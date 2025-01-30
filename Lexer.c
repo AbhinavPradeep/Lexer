@@ -35,13 +35,19 @@ void InitializeTokenArray(TokenArray* Array) {
     Array->Number = 0;
 }
 
-void InsertToken(TokenArray* Array, char* Class, char* Lexeme) {
+void InsertToken(TokenArray* Array, char* Class, char* Start, char* End) {
     if (Array->SizeOfStructure == Array->Number) {
         Array->SizeOfStructure = Array->SizeOfStructure*2;
         Array->Tokens = realloc(Array->Tokens, Array->SizeOfStructure * sizeof(Token));
     }
+
     Array->Tokens[Array->Number].Class = strdup(Class);
-    Array->Tokens[Array->Number].Lexeme = strdup(Lexeme);
+
+    int LexemeLength = (End - Start) + 1;
+    Array->Tokens[Array->Number].Lexeme = malloc(LexemeLength + 1);
+    memcpy(Array->Tokens[Array->Number].Lexeme, Start, LexemeLength);
+    Array->Tokens[Array->Number].Lexeme[LexemeLength] = '\0';
+
     Array->Number++;
 }
 
@@ -151,8 +157,8 @@ int MatchesRegex(CombinedNFA* NFA, char* StringToCheck) {
     return SetContainsMatch(&CurrentSet);
 }
 
-// TokenArray* TokenizeText(CombinedNFA* NFA, char* Text) {
-void TokenizeText(CombinedNFA* NFA, char* Text) {
+TokenArray* TokenizeText(CombinedNFA* NFA, char* Text) {
+// void TokenizeText(CombinedNFA* NFA, char* Text) {
     char* Start = Text;
     char* Forward;
     
@@ -210,39 +216,70 @@ void TokenizeText(CombinedNFA* NFA, char* Text) {
         if (LastMatchedToken != NULL) {
 
             if (strcmp(LastMatchedToken, "WHITE") == 0 || strcmp(LastMatchedToken, "NEWLINE") == 0) {
-                Start = LastMatchedPosition + 1;  // Move past whitespace
-                continue;  // Skip token
+                // Move past whitespace
+                Start = LastMatchedPosition + 1;
+                // Skip token
+                continue;
             }
 
-            printf("<Token: %s, Lexeme: \"", LastMatchedToken);
-            for (char* p = Start; p <= LastMatchedPosition; p++) {
-                putchar(*p);
-            }
-            printf("\">\n");
+            InsertToken(TokenizedText, LastMatchedToken, Start, LastMatchedPosition);
+
+            // printf("<Token: %s, Lexeme: \"", LastMatchedToken);
+            // for (char* p = Start; p <= LastMatchedPosition; p++) {
+            //     putchar(*p);
+            // }
+            // printf("\">\n");
 
             Start = LastMatchedPosition + 1;
 
         } else {
-            printf("Lexical error: Unrecognized token at \"%c\"\n", *Start);
+            InsertToken(TokenizedText, "ERROR", Start, Start);
+            // printf("Lexical error: Unrecognized token at \"%c\"\n", *Start);
             Start++;
         }
         
     }
     
-    // return TokenizedText;
+    return TokenizedText;
 }
 
 int main(int argc, char *argv[]) {
+
     if (argc < 3) {
-        printf("Usage: lex <file> <string>\n");
+        printf("Usage: lex <grammar_file> <input_file>\n");
         return 1;
     }
 
-    CombinedNFA* NFA =  ProcessLexicalGrammar(argv[1]);
+    CombinedNFA* NFA = ProcessLexicalGrammar(argv[1]);
 
-    char* S = argv[2];
+    FILE* File = fopen(argv[2], "r");
 
-    TokenizeText(NFA,S);
+    if (!File) {
+        perror("Error opening input file");
+        return 1;
+    }
+
+    fseek(File, 0, SEEK_END);
+
+    long File_size = ftell(File);
+    
+    rewind(File);
+
+    char* Buffer = malloc(File_size + 1);
+
+    fread(Buffer, 1, File_size, File);
+
+    Buffer[File_size] = '\0';
+
+    fclose(File);
+
+    TokenArray* TokenizedText = TokenizeText(NFA, Buffer);
+
+    for (int i = 0; i < TokenizedText->Number; i++) {
+        printf("<Token: %s, Lexeme: \"%s\">\n", TokenizedText->Tokens[i].Class, TokenizedText->Tokens[i].Lexeme);
+    }
+
+    free(Buffer);
 
     return 0;
 }
